@@ -163,3 +163,4 @@ cython_debug/
 
 # Random binaries
 *.png
+*.mp4
