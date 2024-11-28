@@ -16,6 +16,12 @@ from scipy.optimize import newton
 from typing import Union
 
 
+import matplotlib.pyplot as plt
+from matplotlib.patches import Circle
+from matplotlib.animation import FuncAnimation, FFMpegWriter
+from tqdm import tqdm
+
+
 class Array:
     def __init__(self, instruments: list):
         self.instruments = instruments
@@ -66,7 +72,6 @@ class Array:
         time = np.atleast_1d(time)
         
         rot_pos = self.to_projection(time, sc)
-        print('rotpos', rot_pos.shape)
         
         earth_rad = 6.378e6
         elevation_limit = np.deg2rad(00) # HARD SET
@@ -266,39 +271,22 @@ def xyz_to_lonlat(pos):
 
     return rad, lon, lat
 
-
-if __name__=='__main__':
-    # Decide on time
-    n_steps = 100
-    time_start = Time.now()
-    time_length = 3 * u.hour
-    time_arr = time_start + np.linspace(-0.5, 0.5, n_steps) * time_length
+def plot_observe(array, sc, time, length, n_steps=100):
     
-    # consts
-    r_earth = 6.378e6
+    # Check if we're starting at a reasonable time
+    array_center = EarthLocation(lat=35.88, lon=-106.30, height=0)
+    lst = time.sidereal_time('apparent', longitude=array_center.lon)
+    print('LST Mid:', lst.hour)
+    print('Target RA:', sc.ra.hour)
     
-    # Decide on target (zenith)
-    location_dc = EarthLocation(lat=38.9215, lon=-77.0669, height=0)
-    altaz_frame = AltAz(obstime=Time.now(), location=location_dc)
-    zenith_altaz = SkyCoord(alt=90 * u.deg, az=0 * u.deg, frame=altaz_frame)
-    sc = zenith_altaz.transform_to('icrs')
-
-    # Set up array from HSA, add Fermi satellite
-    myarray = Array.from_file('hsa.antpos')
-    myarray.instruments.append(Satellite('HALCA',
-                                         1.7259e7, 0.599, 31.2,
-                                         128, 144, 358, 
-                                         Time('2016-04-28 09:56:22')))
+    # Generate time stuff
+    time_arr = time + np.linspace(-0.5, 0.5, n_steps) * length
     
     # Run the actual simulation
     pos_over_time, isvis2d, uvw2d = myarray.to_uvw(time_arr, sc, True)
     
-    import matplotlib.pyplot as plt
-    from matplotlib.patches import Circle
-    from matplotlib.animation import FuncAnimation, FFMpegWriter
-    from tqdm import tqdm
-    
     # Some useful scales and values for plotting
+    r_earth = 6.378e6
     pos_over_time /= r_earth
     uvw2d /= r_earth
     max_xy = 1.05*np.max(np.abs(pos_over_time[1:]))
@@ -327,6 +315,8 @@ if __name__=='__main__':
     ax = plt.subplot2grid((1, 2), (0, 1), aspect='equal')
     ax.scatter(uvw2d[1].ravel(), uvw2d[2].ravel(), c=uvw2d[0].ravel(),
                cmap='Spectral', vmin=-max_w, vmax=max_w)
+    
+    # ax.scatter(uvw2d[1].ravel(), uvw2d[2].ravel(), c='k')
     ax.set_xlim(-max_uv, max_uv)
     ax.set_ylim(-max_uv, max_uv)
     ax.set_xticks([])
@@ -334,12 +324,28 @@ if __name__=='__main__':
     ax.set_title('Baselines')
     
     plt.tight_layout()
+    plt.savefig('fig26d1.png', bbox_inches='tight')
     plt.show()
+    return uvw2d
+
+if __name__=='__main__':
     
-    # plt.figure(figsize=(10,10))
-    # ax = plt.subplot(projection='3d')
-    # ax.scatter(uvw2d[0].ravel(), uvw2d[1].ravel(), uvw2d[2].ravel(), marker='.')
+    # Useful in other moments
+    # Decide on target (zenith)
+    location_dc = EarthLocation(lat=38.9215, lon=-77.0669, height=0)
+    altaz_frame = AltAz(obstime=Time.now(), location=location_dc)
+    zenith_altaz = SkyCoord(alt=90 * u.deg, az=0 * u.deg, frame=altaz_frame)
+    sc = zenith_altaz.transform_to('icrs')
+
+    # Set up array from HSA, add Fermi satellite
+    myarray = Array.from_file('arrays/vlba.antpos')
+    myarray.instruments.append(Satellite('HALCA',
+                                          1.7259e7, 0.599, 31.2,
+                                          128, 144, 358, 
+                                          Time('2016-04-28 09:56:22')))
     
-    # ax.set_xlim(-2*max_xy, 2*max_xy)
-    # ax.set_ylim(-2*max_xy, 2*max_xy)
-    # ax.set_zlim(-2*max_xy, 2*max_xy)
+    tgt1 = SkyCoord('18h00m45.683894s +78d28\'04.01845"')
+    time1 = Time('1998-04-01 12:30:00')
+    length1 = 8 * u.hour
+    steps = 100
+    test = plot_observe(myarray, tgt1, time1, length1, steps)
